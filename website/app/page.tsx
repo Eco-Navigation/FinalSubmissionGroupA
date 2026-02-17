@@ -1,16 +1,36 @@
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-green-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <h1 className="text-5xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-7xl">
-          The GreenWay Dashboard
+    <main className="flex min-h-screen flex-col items-center justify-center p-24 bg-gray-50">
+      <div className="text-center max-w-2xl">
+        <h1 className="text-5xl font-bold text-gray-900 mb-6">
+          Travel Smarter. <br />
+          <span className="text-green-600">Track Greener.</span>
         </h1>
-        <p className="mt-5 text-2xl text-gray-500 dark:text-gray-300">
-          A dashboard for monitoring and managing your green initiatives.
+        
+        <p className="text-lg text-gray-600 mb-8">
+          Welcome to the employee travel portal. Track your business trips, 
+          manage expenses, and monitor your carbon footprint in one place.
         </p>
-      </main>
-    </div>
+
+        <div className="flex justify-center gap-4">
+          <Link 
+            href="/dashboard" 
+            className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-all"
+          >
+            Go to Personal Overview
+          </Link>
+          
+          <button 
+            disabled
+            className="bg-white border border-gray-300 text-gray-400 font-bold py-3 px-8 rounded-lg cursor-not-allowed"
+          >
+            Company Dashboard (Coming Soon)
+          </button>
+        </div>
+      </div>
+    </main>
   );
 }
