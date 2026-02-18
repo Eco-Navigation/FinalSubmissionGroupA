@@ -21,7 +21,13 @@ export default function NavBar() {
             href="/dashboard" 
             className="text-gray-600 hover:text-green-600 font-medium transition-colors"
           >
-            Personal Overview
+            Individual Dashboard
+          </Link>
+          <Link 
+            href="/company" 
+            className="text-gray-600 hover:text-green-600 font-medium transition-colors"
+          >
+            Company Dashboard
           </Link>
         </div>
       </div>

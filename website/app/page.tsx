@@ -20,15 +20,15 @@ export default function Home() {
             href="/dashboard" 
             className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-all"
           >
-            Go to Personal Overview
+            See Individual Overview
           </Link>
           
-          <button 
-            disabled
-            className="bg-white border border-gray-300 text-gray-400 font-bold py-3 px-8 rounded-lg cursor-not-allowed"
+          <Link 
+            href="/company" 
+            className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-all"
           >
-            Company Dashboard (Coming Soon)
-          </button>
+            See Company Overview
+          </Link>
         </div>
       </div>
     </main>
