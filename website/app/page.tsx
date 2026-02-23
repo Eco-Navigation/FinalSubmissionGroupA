@@ -37,7 +37,7 @@ export default function Home() {
       <nav className="sticky top-0 z-50 border-b border-green-100 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
-            <span className="text-3xl">🦕</span>
+            <img src="/Dino.png" alt="Dino" className="h-10 w-auto object-contain" />
             <span className="text-xl font-bold text-green-700">The Green Way</span>
           </div>
           <div className="hidden items-center gap-8 text-sm font-medium text-gray-600 md:flex">
@@ -434,7 +434,7 @@ export default function Home() {
         className="bg-green-700 px-6 py-24 text-white text-center"
       >
         <div className="mx-auto max-w-2xl">
-          <span className="mx-auto mb-4 block text-6xl">🦕</span>
+          <img src="/Dino.png" alt="Dino" className="mx-auto mb-4 h-28 w-auto object-contain" />
           <h2 className="mb-6 text-4xl font-extrabold tracking-tight">
             Get in early.
           </h2>
@@ -457,7 +457,7 @@ export default function Home() {
         <div className="mx-auto max-w-5xl">
           <div className="flex flex-col items-center justify-between gap-6 md:flex-row">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">🦕</span>
+              <img src="/Dino.png" alt="Dino" className="h-10 w-auto object-contain" />
               <span className="font-bold text-green-700">The Green Way</span>
             </div>
             <p className="text-sm text-gray-500 text-center">
