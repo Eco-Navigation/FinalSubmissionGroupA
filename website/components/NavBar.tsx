@@ -5,9 +5,10 @@ export default function NavBar() {
     <nav className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="max-w-6xl mx-auto flex justify-between items-center">
         {/* Logo / Home Link */}
-        <Link href="/" className="text-xl font-bold text-green-700 hover:text-green-800">
-          TakeTheGreenway
-        </Link>
+        <a href="/" className="flex items-center gap-2">
+            <img src="/Dino.png" alt="Dino" className="h-10 w-auto object-contain"/>
+            <span className="text-xl font-bold text-green-700">The Green Way</span>
+          </a>
 
         {/* Navigation Links */}
         <div className="flex gap-6">
