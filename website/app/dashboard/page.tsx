@@ -108,7 +108,7 @@ const groupTripsByMonth = (trips: Trip[]) => {
 export default function DashboardPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
-  const DUMMY_USER_ID = 3;
+  const DUMMY_USER_ID = '00000000-0000-0000-0000-000000000000';
 
   useEffect(() => {
     const fetchTrips = async () => {

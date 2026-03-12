@@ -30,6 +30,12 @@ export default function NavBar() {
           >
             Company Dashboard
           </Link>
+          <Link 
+            href="/auth" 
+            className="text-gray-600 hover:text-green-600 font-medium transition-colors"
+          >
+            Sign In
+          </Link>
         </div>
       </div>
     </nav>
