@@ -29,6 +29,13 @@ export default function Home() {
           >
             See Company Overview
           </Link>
+
+          <Link 
+            href="/navigation" 
+            className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg transition-all"
+          >
+            See Navigation
+          </Link>
         </div>
       </div>
     </main>

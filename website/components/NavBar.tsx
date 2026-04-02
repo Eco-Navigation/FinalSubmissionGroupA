@@ -18,6 +18,12 @@ export default function NavBar() {
           >
             Home
           </Link>
+          <Link
+            href="/navigation"
+            className="text-gray-600 hover:text-green-600 font-medium transition-colors"
+          >
+            Navigation
+          </Link>
           <Link 
             href="/dashboard" 
             className="text-gray-600 hover:text-green-600 font-medium transition-colors"
