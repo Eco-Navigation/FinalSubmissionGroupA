@@ -133,8 +133,10 @@ export default function NavigationPage() {
 
     if (origin && destination) {
       map.current.fitBounds(bounds, { padding: 80, duration: 1000 });
-    } else if (origin || destination) {
-      map.current.flyTo({ center: origin ? [origin.lon, origin.lat] : [destination.lon, destination.lat], zoom: 14 });
+    } else if (origin) {
+      map.current.flyTo({ center: [origin.lon, origin.lat], zoom: 14 });
+    } else if (destination) {
+      map.current.flyTo({ center: [destination.lon, destination.lat], zoom: 14 });
     }
   }, [origin, destination]);
 
