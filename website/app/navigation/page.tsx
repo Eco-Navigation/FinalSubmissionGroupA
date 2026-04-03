@@ -1,8 +1,7 @@
 'use client';
-
 import React, { useState, useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
-import { MapPin, Search, X, Loader2, Leaf, Footprints, Car, Train, Bus, Bike, CloudFog } from 'lucide-react';
+import { MapPin, Search, X, Loader2, Leaf, Footprints, Car, Train, Bus, Bike, CloudFog, Route, Calendar, Clock } from 'lucide-react';
 
 // --- Types & Constants ---
 interface Location {
@@ -18,16 +17,24 @@ interface RouteLeg {
   legGeometry: { points: string };
 }
 
+interface RouteLegData {
+  mode: string;
+  color: string;
+  coordinates: [number, number][];
+}
+
 interface ParsedRoute {
   title: string;
   durationMins: number;
   modes: string[];
-  totalCO2: number;
+  totalDistKm: number;
+  distString: string;
+  totalCO2g: number;
   co2String: string;
   co2Color: string;
   routeColor: string;
   mainIcon: React.ElementType;
-  coordinates: [number, number][];
+  legsData: RouteLegData[];
 }
 
 const CO2_FACTORS: Record<string, number> = {
@@ -36,6 +43,16 @@ const CO2_FACTORS: Record<string, number> = {
   'RAIL': 35,
   'BUS': 82,
   'CAR': 170
+};
+
+// Colors for the map lines based on the travel mode
+const MODE_COLORS: Record<string, string> = {
+  'WALK': '#42db06',
+  'BICYCLE': '#07e29d',
+  'CAR': '#d74545',
+  'BUS': '#d8db06',
+  'RAIL': '#0c73da',
+  'TRAM': '#06cdd4'
 };
 
 const OTP_URL = "https://otp-server-879473166500.europe-west2.run.app/otp/routers/default/index/graphql";
@@ -76,6 +93,15 @@ export default function NavigationPage() {
   const [toResults, setToResults] = useState<any[]>([]);
   const fromTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const toTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Routing Options State
+  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [time, setTime] = useState(() => {
+    const now = new Date();
+    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  });
+  const [arriveBy, setArriveBy] = useState(false);
+  const [selectedModes, setSelectedModes] = useState<string[]>(['WALK', 'TRANSIT']);
 
   // Routing State
   const [routes, setRoutes] = useState<ParsedRoute[]>([]);
@@ -131,12 +157,14 @@ export default function NavigationPage() {
       bounds.extend([destination.lon, destination.lat]);
     }
 
+    const mapPadding = { top: 80, bottom: 80, left: 450, right: 80 };
+
     if (origin && destination) {
-      map.current.fitBounds(bounds, { padding: 80, duration: 1000 });
+      map.current.fitBounds(bounds, { padding: mapPadding, duration: 1000 });
     } else if (origin) {
-      map.current.flyTo({ center: [origin.lon, origin.lat], zoom: 14 });
+      map.current.flyTo({ center: [origin.lon, origin.lat], zoom: 14, padding: mapPadding });
     } else if (destination) {
-      map.current.flyTo({ center: [destination.lon, destination.lat], zoom: 14 });
+      map.current.flyTo({ center: [destination.lon, destination.lat], zoom: 14, padding: mapPadding });
     }
   }, [origin, destination]);
 
@@ -144,26 +172,50 @@ export default function NavigationPage() {
   useEffect(() => {
     if (!map.current) return;
     
-    // Clean up existing route
+    // Clean up existing route and outline
     if (map.current.getLayer(CURRENT_ROUTE_ID)) map.current.removeLayer(CURRENT_ROUTE_ID);
+    if (map.current.getLayer(`${CURRENT_ROUTE_ID}-outline`)) map.current.removeLayer(`${CURRENT_ROUTE_ID}-outline`);
     if (map.current.getSource(CURRENT_ROUTE_ID)) map.current.removeSource(CURRENT_ROUTE_ID);
 
     if (activeRouteIndex !== null && routes[activeRouteIndex]) {
       const route = routes[activeRouteIndex];
-      if (!route.coordinates || route.coordinates.length === 0) return;
+      if (!route.legsData || route.legsData.length === 0) return;
+
+      // Construct a FeatureCollection to hold separate LineStrings for each leg
+      const features = route.legsData.map(leg => ({
+        type: 'Feature' as const,
+        properties: { color: leg.color },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: leg.coordinates
+        }
+      }));
 
       map.current.addSource(CURRENT_ROUTE_ID, {
         type: 'geojson',
         data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: route.coordinates
-          }
+          type: 'FeatureCollection',
+          features: features
         }
       });
 
+      // 1. Add Outline Layer First (Rendered underneath)
+      map.current.addLayer({
+        id: `${CURRENT_ROUTE_ID}-outline`,
+        type: 'line',
+        source: CURRENT_ROUTE_ID,
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        paint: {
+          'line-color': '#1f2937', // Dark gray / almost black outline
+          'line-width': 8,         // Wider than the inner line
+          'line-opacity': 0.7
+        }
+      });
+
+      // 2. Add Main Color Layer on top
       map.current.addLayer({
         id: CURRENT_ROUTE_ID,
         type: 'line',
@@ -173,19 +225,26 @@ export default function NavigationPage() {
           'line-cap': 'round'
         },
         paint: {
-          'line-color': route.routeColor,
-          'line-width': 5,
-          'line-opacity': 0.8
+          // Use data-driven styling to grab the color from the feature properties
+          'line-color': ['get', 'color'],
+          'line-width': 4,
+          'line-opacity': 1 // Fully opaque so outline doesn't bleed through
         }
       });
 
-      // Refit bounds to the drawn route
+      // Refit bounds to cover all drawn route segments
       const bounds = new maplibregl.LngLatBounds();
-      route.coordinates.forEach(coord => bounds.extend(coord));
-      map.current.fitBounds(bounds, { padding: 80, duration: 800 });
+      route.legsData.forEach(leg => {
+        leg.coordinates.forEach(coord => bounds.extend(coord as [number, number]));
+      });
+      
+      // Use an object to apply specific padding to the left side (accounting for the ~384px wide UI panel)
+      map.current.fitBounds(bounds, { 
+        padding: { top: 80, bottom: 80, left: 420, right: 80 }, 
+        duration: 800 
+      });
     }
   }, [activeRouteIndex, routes]);
-
 
   // --- 4. Geocoding Logic ---
   const searchNominatim = async (query: string, setResults: React.Dispatch<React.SetStateAction<any[]>>) => {
@@ -216,6 +275,15 @@ export default function NavigationPage() {
     toTimeoutRef.current = setTimeout(() => searchNominatim(val, setToResults), 400);
   };
 
+  const handleModeToggle = (mode: string) => {
+    setSelectedModes(prev => {
+      if (prev.includes(mode)) {
+        if (prev.length === 1) return prev; // Prevent deselecting all modes
+        return prev.filter(m => m !== mode);
+      }
+      return [...prev, mode];
+    });
+  };
 
   // --- 5. OTP Routing Logic ---
   const fetchRoutes = async () => {
@@ -230,23 +298,56 @@ export default function NavigationPage() {
     setRoutes([]);
     setActiveRouteIndex(null);
 
-    const query = `
-      query {
-        plan(
-          from: {lat: ${origin.lat}, lon: ${origin.lon}},
-          to: {lat: ${destination.lat}, lon: ${destination.lon}},
-          numItineraries: 5
-        ) {
-          itineraries {
+    // 1. Define a GraphQL Fragment so we don't have to repeat the requested fields
+    const fragment = `
+      fragment itineraryFields on Plan {
+        itineraries {
+          duration
+          legs {
+            mode
+            distance
             duration
-            legs {
-              mode
-              distance
-              duration
-              legGeometry { points }
-            }
+            legGeometry { points }
           }
         }
+      }
+    `;
+
+    // 2. Build the base arguments shared across all queries
+    const baseArgs = `from: {lat: ${origin.lat}, lon: ${origin.lon}}, to: {lat: ${destination.lat}, lon: ${destination.lon}}, date: "${date}", time: "${time}", arriveBy: ${arriveBy}, numItineraries: 3`;
+    
+    // 3. Dynamically construct aliased queries based on selected modes
+    let queryAliases = [];
+
+    if (selectedModes.includes('WALK')) {
+      queryAliases.push(`walk: plan(${baseArgs}, transportModes: [{mode: WALK}]) { ...itineraryFields }`);
+    }
+    if (selectedModes.includes('BICYCLE')) {
+      queryAliases.push(`bike: plan(${baseArgs}, transportModes: [{mode: BICYCLE}]) { ...itineraryFields }`);
+    }
+    if (selectedModes.includes('CAR')) {
+      queryAliases.push(`car: plan(${baseArgs}, transportModes: [{mode: CAR}]) { ...itineraryFields }`);
+    }
+    if (selectedModes.includes('TRANSIT')) {
+      // Standard transit (allows walking to the station)
+      queryAliases.push(`transit: plan(${baseArgs}, transportModes: [{mode: TRANSIT}, {mode: WALK}]) { ...itineraryFields }`);
+      
+      // If both Bike AND Transit are selected, explicitly ask for a multimodal "Bike to Station" route
+      if (selectedModes.includes('BICYCLE')) {
+        queryAliases.push(`bikeTransit: plan(${baseArgs}, transportModes: [{mode: TRANSIT}, {mode: BICYCLE}]) { ...itineraryFields }`);
+      }
+      
+      // If both Car AND Transit are selected, explicitly ask for a multimodal "Park & Ride" route
+      if (selectedModes.includes('CAR')) {
+        queryAliases.push(`parkAndRide: plan(${baseArgs}, transportModes: [{mode: TRANSIT}, {mode: CAR_TO_PARK}]) { ...itineraryFields }`);
+      }
+    }
+
+    // Combine them all into one massive batch query
+    const query = `
+      ${fragment}
+      query {
+        ${queryAliases.join('\n        ')}
       }
     `;
 
@@ -259,61 +360,109 @@ export default function NavigationPage() {
       
       const otpData = await response.json();
       
-      if (!otpData.data || !otpData.data.plan || !otpData.data.plan.itineraries.length) {
+      // 4. Extract itineraries from all the separate aliases into one flat array
+      let allItineraries: any[] = [];
+      if (otpData.data) {
+        Object.values(otpData.data).forEach((plan: any) => {
+          if (plan && plan.itineraries) {
+            allItineraries.push(...plan.itineraries);
+          }
+        });
+      }
+      
+      if (allItineraries.length === 0) {
         setSearchError("No routes found between these locations. Are they too far apart for the current map bounds?");
         setLoading(false);
         return;
       }
 
-      const parsedRoutes: ParsedRoute[] = otpData.data.plan.itineraries.map((itinerary: any) => {
-        let totalCO2 = 0;
-        let allCoordinates: [number, number][] = [];
+      // 5. Deduplicate routes (sometimes the 'bike' query and 'bikeTransit' query return the exact same route)
+      const uniqueItineraries: any[] = [];
+      const seen = new Set();
+      allItineraries.forEach(itin => {
+        // Create a unique signature based on duration and mode sequence
+        const sig = Math.round(itin.duration) + "_" + itin.legs.map((l: any) => l.mode).join('-');
+        if (!seen.has(sig)) {
+          seen.add(sig);
+          uniqueItineraries.push(itin);
+        }
+      });
+
+      const parsedRoutes: ParsedRoute[] = uniqueItineraries.map((itinerary: any) => {
+        let totalCO2g = 0;
+        let totalDistKm = 0;
+        let legsData: RouteLegData[] = [];
         let modes: string[] = [];
+        
+        let hasCar = false;
         let hasTransit = false;
 
         itinerary.legs.forEach((leg: RouteLeg) => {
           const distKm = leg.distance / 1000;
+          totalDistKm += distKm;
           const factor = CO2_FACTORS[leg.mode] !== undefined ? CO2_FACTORS[leg.mode] : 100; 
-          totalCO2 += distKm * factor;
+          totalCO2g += distKm * factor;
           
           modes.push(leg.mode);
           if (['BUS', 'RAIL', 'TRAM'].includes(leg.mode)) hasTransit = true;
+          if (leg.mode === 'CAR') hasCar = true;
           
           if (leg.legGeometry?.points) {
-            allCoordinates = allCoordinates.concat(decodePolyline(leg.legGeometry.points));
+            const coords = decodePolyline(leg.legGeometry.points);
+            const legColor = MODE_COLORS[leg.mode] || '#6b7280'; // fallback to dark gray
+            legsData.push({
+              mode: leg.mode,
+              color: legColor,
+              coordinates: coords
+            });
           }
         });
 
+        // Determine title, icon, and main route color based on the modes present
         let mainIcon = Footprints;
         let title = 'Walking Route';
         let routeColor = '#10b981'; 
         
-        if (modes.includes('CAR')) {
-          mainIcon = Car; title = 'Driving Route'; routeColor = '#ef4444'; 
+        if (hasCar && hasTransit) {
+          mainIcon = Car; 
+          title = 'Park & Ride'; 
+          routeColor = '#f59e0b'; // Amber to distinguish from standard transit/driving
+        } else if (hasCar) {
+          mainIcon = Car; 
+          title = 'Driving Route'; 
+          routeColor = '#ef4444'; 
         } else if (hasTransit) {
           mainIcon = modes.includes('RAIL') ? Train : Bus;
-          title = 'Public Transit'; routeColor = '#3b82f6'; 
+          title = 'Public Transit'; 
+          routeColor = '#3b82f6'; 
         } else if (modes.includes('BICYCLE')) {
-          mainIcon = Bike; title = 'Cycling Route'; routeColor = '#10b981';
+          mainIcon = Bike; 
+          title = 'Cycling Route'; 
+          routeColor = '#10b981';
         }
 
         const durationMins = Math.round(itinerary.duration / 60);
 
+        const perKmCO2 = totalDistKm > 0 ? totalCO2g / totalDistKm : 0;
+        let distString = `${totalDistKm.toFixed(1)} km`;
         let co2String = "";
         let co2Color = "";
-        if (totalCO2 === 0) {
-          co2String = "0g CO₂ (Zero Emission)";
+        if (perKmCO2 < 20) {
+          co2String = `${Math.round(totalCO2g)}g CO₂ (Very Low)`;
           co2Color = "text-green-600 bg-green-50";
-        } else if (totalCO2 < 500) {
-          co2String = `${Math.round(totalCO2)}g CO₂ (Low)`;
+        } else if (perKmCO2 < 80) {
+          co2String = `${Math.round(totalCO2g)}g CO₂ (Low)`;
           co2Color = "text-yellow-600 bg-yellow-50";
         } else {
-          co2String = `${Math.round(totalCO2)}g CO₂ (High)`;
+          co2String = `${Math.round(totalCO2g)}g CO₂ (High)`;
           co2Color = "text-red-600 bg-red-50";
         }
 
-        return { title, durationMins, modes, totalCO2, co2String, co2Color, routeColor, mainIcon, coordinates: allCoordinates };
+        return { title, durationMins, modes, totalDistKm, distString, totalCO2g, co2String, co2Color, routeColor, mainIcon, legsData };
       });
+
+      // Sort the final results by duration so the fastest route appears at the top
+      parsedRoutes.sort((a, b) => a.durationMins - b.durationMins);
 
       setRoutes(parsedRoutes);
       if (parsedRoutes.length > 0) setActiveRouteIndex(0); // auto-select first
@@ -364,7 +513,7 @@ export default function NavigationPage() {
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-all text-sm text-gray-500 bg-white"
               />
               {fromResults.length > 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-60">
+                <div className="absolute z-50 w-full mt-1 text-gray-500 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-60">
                   {fromResults.map((place, i) => (
                     <div 
                       key={i} 
@@ -396,7 +545,7 @@ export default function NavigationPage() {
                 className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 transition-all text-sm text-gray-500 bg-white"
               />
               {toResults.length > 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-60">
+                <div className="absolute z-50 w-full mt-1 text-gray-500 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-60">
                   {toResults.map((place, i) => (
                     <div 
                       key={i} 
@@ -413,6 +562,54 @@ export default function NavigationPage() {
                   ))}
                 </div>
               )}
+            </div>
+            
+            {/* Routing Options (Time, Date, Modes) */}
+            <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+              <div className="flex gap-2">
+                <select 
+                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm flex-1 bg-white focus:ring-2 focus:ring-green-500 outline-none text-gray-700"
+                  value={arriveBy ? 'arrive' : 'depart'}
+                  onChange={(e) => setArriveBy(e.target.value === 'arrive')}
+                >
+                  <option value="depart">Depart at</option>
+                  <option value="arrive">Arrive by</option>
+                </select>
+                <input 
+                  type="time" 
+                  value={time} 
+                  onChange={e => setTime(e.target.value)}
+                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm flex-1 bg-white focus:ring-2 focus:ring-green-500 outline-none text-gray-700"
+                />
+                <input 
+                  type="date" 
+                  value={date} 
+                  onChange={e => setDate(e.target.value)}
+                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm flex-1 bg-white focus:ring-2 focus:ring-green-500 outline-none text-gray-700"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                {[
+                  { id: 'WALK', label: 'Walk', icon: Footprints },
+                  { id: 'TRANSIT', label: 'Transit', icon: Bus },
+                  { id: 'BICYCLE', label: 'Bike', icon: Bike },
+                  { id: 'CAR', label: 'Car', icon: Car },
+                ].map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleModeToggle(m.id)}
+                    className={`flex-1 flex flex-col items-center justify-center p-2 rounded-lg border text-xs gap-1 transition-colors ${
+                      selectedModes.includes(m.id) 
+                        ? 'bg-green-50 border-green-500 text-green-700 font-medium' 
+                        : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    <m.icon className="h-4 w-4" />
+                    {m.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <button 
@@ -476,16 +673,22 @@ export default function NavigationPage() {
                       <div className="flex flex-wrap gap-1 mb-3 items-center">
                         {route.modes.map((mode, mIdx) => (
                           <React.Fragment key={mIdx}>
-                            <span className="text-[11px] font-medium px-2 py-1 bg-gray-100 text-gray-600 rounded-md">
+                            <span 
+                              className="text-[11px] font-medium px-2 py-1 text-white rounded-md"
+                              style={{ backgroundColor: MODE_COLORS[mode] || '#6b7280' }}
+                            >
                               {mode}
                             </span>
-                            {mIdx < route.modes.length - 1 && <span className="text-xs text-gray-400">→</span>}
+                            {mIdx < route.modes.length - 1 && <span className="text-xs text-gray-700">→</span>}
                           </React.Fragment>
                         ))}
                       </div>
 
                       <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md ${route.co2Color}`}>
                         <CloudFog className="h-3.5 w-3.5" /> {route.co2String}
+                      </div>
+                      <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md ${route.co2Color}`}>
+                        <Route className="h-3.5 w-3.5" /> {route.distString}
                       </div>
                     </div>
                   );
