@@ -314,7 +314,7 @@ export default function NavigationPage() {
     `;
 
     // 2. Build the base arguments shared across all queries
-    const baseArgs = `from: {lat: ${origin.lat}, lon: ${origin.lon}}, to: {lat: ${destination.lat}, lon: ${destination.lon}}, date: "${date}", time: "${time}", arriveBy: ${arriveBy}, numItineraries: 3`;
+    const baseArgs = `from: {lat: ${origin.lat}, lon: ${origin.lon}}, to: {lat: ${destination.lat}, lon: ${destination.lon}}, date: "${date}", time: "${time}", arriveBy: ${arriveBy}, numItineraries: 5`;
     
     // 3. Dynamically construct aliased queries based on selected modes
     let queryAliases = [];
@@ -334,13 +334,21 @@ export default function NavigationPage() {
       
       // If both Bike AND Transit are selected, explicitly ask for a multimodal "Bike to Station" route
       if (selectedModes.includes('BICYCLE')) {
-        queryAliases.push(`bikeTransit: plan(${baseArgs}, transportModes: [{mode: TRANSIT}, {mode: BICYCLE}]) { ...itineraryFields }`);
+        // Added {mode: WALK} here as well so the user can walk through the station
+        queryAliases.push(`bikeTransit: plan(${baseArgs}, transportModes: [{mode: TRANSIT}, {mode: BICYCLE}, {mode: WALK}]) { ...itineraryFields }`);
       }
       
       // If both Car AND Transit are selected, explicitly ask for a multimodal "Park & Ride" route
       if (selectedModes.includes('CAR')) {
-        queryAliases.push(`parkAndRide: plan(${baseArgs}, transportModes: [{mode: TRANSIT}, {mode: CAR_TO_PARK}]) { ...itineraryFields }`);
+        // Using qualifier: PARK explicitly tells OTP2 to route the car to an official Park & Ride facility
+        queryAliases.push(`parkAndRide: plan(${baseArgs}, transportModes: [{mode: TRANSIT}, {mode: WALK}, {mode: CAR, qualifier: PARK}]) { ...itineraryFields }`);
       }
+    }
+
+    if (queryAliases.length === 0) {
+      setSearchError("Please select at least one transport mode.");
+      setLoading(false);
+      return;
     }
 
     // Combine them all into one massive batch query
@@ -360,9 +368,14 @@ export default function NavigationPage() {
       
       const otpData = await response.json();
       
+      // Safely log any internal GraphQL errors to the console to help with future debugging
+      if (otpData.errors) {
+        console.error("OTP GraphQL Errors:", otpData.errors);
+      }
+      
       // 4. Extract itineraries from all the separate aliases into one flat array
       let allItineraries: any[] = [];
-      if (otpData.data) {
+      if (otpData?.data) {
         Object.values(otpData.data).forEach((plan: any) => {
           if (plan && plan.itineraries) {
             allItineraries.push(...plan.itineraries);
@@ -405,7 +418,8 @@ export default function NavigationPage() {
           
           modes.push(leg.mode);
           if (['BUS', 'RAIL', 'TRAM'].includes(leg.mode)) hasTransit = true;
-          if (leg.mode === 'CAR') hasCar = true;
+          // Catch any variation of the car mode returned by the server
+          if (leg.mode === 'CAR' || leg.mode === 'CAR_PARK' || leg.mode === 'CAR_TO_PARK') hasCar = true;
           
           if (leg.legGeometry?.points) {
             const coords = decodePolyline(leg.legGeometry.points);
@@ -589,18 +603,18 @@ export default function NavigationPage() {
                 />
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { id: 'WALK', label: 'Walk', icon: Footprints },
                   { id: 'TRANSIT', label: 'Transit', icon: Bus },
-                  { id: 'BICYCLE', label: 'Bike', icon: Bike },
-                  { id: 'CAR', label: 'Car', icon: Car },
+                  { id: 'BICYCLE', label: 'Cycle', icon: Bike },
+                  { id: 'CAR', label: 'Drive', icon: Car },
                 ].map(m => (
                   <button
                     key={m.id}
                     onClick={() => handleModeToggle(m.id)}
                     className={`flex-1 flex flex-col items-center justify-center p-2 rounded-lg border text-xs gap-1 transition-colors ${
-                      selectedModes.includes(m.id) 
+                      selectedModes.includes(m.id)
                         ? 'bg-green-50 border-green-500 text-green-700 font-medium' 
                         : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                     }`}
@@ -623,7 +637,7 @@ export default function NavigationPage() {
 
         {/* Results Panel */}
         {showResultsPanel && (
-          <div className="bg-white/95 backdrop-blur-md shadow-lg rounded-xl pointer-events-auto flex flex-col overflow-hidden border border-gray-200 h-full max-h-[calc(100vh-16rem)]">
+          <div className="bg-white/95 backdrop-blur-md shadow-lg rounded-xl pointer-events-auto flex flex-col overflow-hidden border border-gray-200 h-full max-h-[calc(100vh-26rem)]">
             <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
               <h2 className="font-bold text-gray-800">Available Routes</h2>
               <button onClick={closeResults} className="text-gray-500 hover:text-gray-700 transition-colors">
@@ -687,7 +701,7 @@ export default function NavigationPage() {
                       <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md ${route.co2Color}`}>
                         <CloudFog className="h-3.5 w-3.5" /> {route.co2String}
                       </div>
-                      <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md ${route.co2Color}`}>
+                      <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md ${route.co2Color} ml-2`}>
                         <Route className="h-3.5 w-3.5" /> {route.distString}
                       </div>
                     </div>
