@@ -14,6 +14,11 @@ interface RouteLeg {
   mode: string;
   distance: number;
   duration: number;
+  startTime: number;
+  endTime: number;
+  from: { name: string };
+  to: { name: string };
+  route?: { shortName?: string };
   legGeometry: { points: string };
 }
 
@@ -21,6 +26,19 @@ interface RouteLegData {
   mode: string;
   color: string;
   coordinates: [number, number][];
+}
+
+interface DetailedLeg {
+  mode: string;
+  icon: React.ElementType;
+  color: string;
+  durationMins: number;
+  distanceKm: string;
+  fromName: string;
+  toName: string;
+  routeName: string;
+  startTimeStr: string;
+  endTimeStr: string;
 }
 
 interface ParsedRoute {
@@ -35,6 +53,7 @@ interface ParsedRoute {
   routeColor: string;
   mainIcon: React.ElementType;
   legsData: RouteLegData[];
+  detailedLegs: DetailedLeg[];
 }
 
 const CO2_FACTORS: Record<string, number> = {
@@ -107,6 +126,7 @@ export default function NavigationPage() {
   const [routes, setRoutes] = useState<ParsedRoute[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeRouteIndex, setActiveRouteIndex] = useState<number | null>(null);
+  const [expandedRouteIndex, setExpandedRouteIndex] = useState<number | null>(null);
   const [showResultsPanel, setShowResultsPanel] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
@@ -297,6 +317,7 @@ export default function NavigationPage() {
     setSearchError(null);
     setRoutes([]);
     setActiveRouteIndex(null);
+    setExpandedRouteIndex(null);
 
     // 1. Define a GraphQL Fragment so we don't have to repeat the requested fields
     const fragment = `
@@ -307,6 +328,11 @@ export default function NavigationPage() {
             mode
             distance
             duration
+            startTime
+            endTime
+            from { name }
+            to { name }
+            route { shortName }
             legGeometry { points }
           }
         }
@@ -405,6 +431,7 @@ export default function NavigationPage() {
         let totalCO2g = 0;
         let totalDistKm = 0;
         let legsData: RouteLegData[] = [];
+        let detailedLegs: DetailedLeg[] = [];
         let modes: string[] = [];
         
         let hasCar = false;
@@ -421,15 +448,43 @@ export default function NavigationPage() {
           // Catch any variation of the car mode returned by the server
           if (leg.mode === 'CAR' || leg.mode === 'CAR_PARK' || leg.mode === 'CAR_TO_PARK') hasCar = true;
           
+          const legColor = MODE_COLORS[leg.mode] || '#6b7280'; // fallback to dark gray
+          
           if (leg.legGeometry?.points) {
             const coords = decodePolyline(leg.legGeometry.points);
-            const legColor = MODE_COLORS[leg.mode] || '#6b7280'; // fallback to dark gray
             legsData.push({
               mode: leg.mode,
               color: legColor,
               coordinates: coords
             });
           }
+
+          // Build Detailed Leg Data for the step-by-step UI
+          const startTimeStr = new Date(leg.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const endTimeStr = new Date(leg.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const routeName = leg.route?.shortName || '';
+          const fromName = leg.from?.name || 'Origin';
+          const toName = leg.to?.name || 'Destination';
+          const durationMins = Math.round(leg.duration / 60);
+
+          let legIcon = Footprints;
+          if (leg.mode.includes('CAR')) legIcon = Car;
+          else if (['BUS', 'TRAM'].includes(leg.mode)) legIcon = Bus;
+          else if (leg.mode === 'RAIL') legIcon = Train;
+          else if (leg.mode === 'BICYCLE') legIcon = Bike;
+
+          detailedLegs.push({
+            mode: leg.mode,
+            icon: legIcon,
+            color: legColor,
+            durationMins,
+            distanceKm: distKm.toFixed(1),
+            fromName,
+            toName,
+            routeName,
+            startTimeStr,
+            endTimeStr
+          });
         });
 
         // Determine title, icon, and main route color based on the modes present
@@ -472,7 +527,7 @@ export default function NavigationPage() {
           co2Color = "text-red-600 bg-red-50";
         }
 
-        return { title, durationMins, modes, totalDistKm, distString, totalCO2g, co2String, co2Color, routeColor, mainIcon, legsData };
+        return { title, durationMins, modes, totalDistKm, distString, totalCO2g, co2String, co2Color, routeColor, mainIcon, legsData, detailedLegs };
       });
 
       // Sort the final results by duration so the fastest route appears at the top
@@ -667,11 +722,17 @@ export default function NavigationPage() {
                 {routes.map((route, idx) => {
                   const Icon = route.mainIcon;
                   const isActive = activeRouteIndex === idx;
+                  const isExpanded = expandedRouteIndex === idx;
                   
                   return (
                     <div 
                       key={idx}
-                      onClick={() => setActiveRouteIndex(idx)}
+                      onClick={() => {
+                        if (activeRouteIndex !== idx) {
+                          setActiveRouteIndex(idx);
+                          setExpandedRouteIndex(null); // Reset details panel when switching routes
+                        }
+                      }}
                       className={`bg-white p-4 rounded-lg border shadow-sm hover:shadow-md transition-all cursor-pointer ${
                         isActive ? 'border-green-500 ring-1 ring-green-500' : 'border-gray-200'
                       }`}
@@ -698,12 +759,74 @@ export default function NavigationPage() {
                         ))}
                       </div>
 
-                      <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md ${route.co2Color}`}>
-                        <CloudFog className="h-3.5 w-3.5" /> {route.co2String}
+                      <div className="flex flex-wrap gap-2">
+                        <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md ${route.co2Color}`}>
+                          <CloudFog className="h-3.5 w-3.5" /> {route.co2String}
+                        </div>
+                        <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md ${route.co2Color}`}>
+                          <Route className="h-3.5 w-3.5" /> {route.distString}
+                        </div>
                       </div>
-                      <div className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md ${route.co2Color} ml-2`}>
-                        <Route className="h-3.5 w-3.5" /> {route.distString}
-                      </div>
+
+                      {/* --- Expandable Details Panel --- */}
+                      {isActive && (
+                        <div className="mt-3">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedRouteIndex(isExpanded ? null : idx);
+                            }}
+                            className="w-full py-1.5 text-xs font-bold text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors border border-green-200"
+                          >
+                            {isExpanded ? 'Hide Details' : 'View Details'}
+                          </button>
+
+                          {isExpanded && (
+                            <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-0 cursor-default" onClick={e => e.stopPropagation()}>
+                              {route.detailedLegs.map((leg, lIdx) => (
+                                <div key={lIdx} className="flex gap-3 text-sm min-h-[60px]">
+                                  {/* Timeline left column */}
+                                  <div className="flex flex-col items-center">
+                                    <div className="font-bold text-gray-700 text-[10px] w-12 text-right">{leg.startTimeStr}</div>
+                                    <div className="w-1 flex-1 my-1 rounded-full" style={{ backgroundColor: leg.color }}></div>
+                                  </div>
+                                  
+                                  {/* Info right column */}
+                                  <div className="flex-1 pb-4">
+                                    <div className="flex items-center gap-1.5 font-semibold text-gray-800 mb-0.5">
+                                      <leg.icon className="h-3.5 w-3.5" style={{ color: leg.color }} />
+                                      <span>
+                                        {leg.mode === 'WALK' ? 'Walk' : 
+                                         leg.mode === 'BICYCLE' ? 'Cycle' : 
+                                         leg.mode.includes('CAR') ? 'Drive' : 
+                                         `${leg.mode === 'RAIL' ? 'Train' : 'Bus'} ${leg.routeName ? leg.routeName : ''}`}
+                                      </span>
+                                      <span className="text-gray-400 text-xs font-normal ml-1">({leg.durationMins} min)</span>
+                                    </div>
+                                    <div className="text-gray-500 text-xs leading-relaxed pr-2">
+                                      <div className="truncate"><span className="font-medium text-gray-600">From:</span> {leg.fromName}</div>
+                                      <div className="truncate"><span className="font-medium text-gray-600">To:</span> {leg.toName}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                              
+                              {/* Final Destination Dot */}
+                              <div className="flex gap-3 text-sm">
+                                <div className="flex flex-col items-center">
+                                  <div className="font-bold text-gray-700 text-[10px] w-12 text-right">
+                                    {route.detailedLegs[route.detailedLegs.length - 1]?.endTimeStr}
+                                  </div>
+                                  <div className="w-2 h-2 rounded-full bg-red-500 mt-1 ml-1 mr-1"></div>
+                                </div>
+                                <div className="flex-1">
+                                  <div className="font-semibold text-gray-800 text-xs mt-0.5">Arrive at Destination</div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
