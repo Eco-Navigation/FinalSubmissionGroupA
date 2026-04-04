@@ -494,7 +494,7 @@ export default function NavigationPage() {
         let title = 'Walking Route';
         let routeColor = '#10b981'; 
         
-        if (hasCar && hasTransit || hasWalk) {
+        if (hasCar && (hasTransit || hasWalk)) {
           mainIcon = Car; 
           title = 'Park & Ride'; 
           routeColor = '#f59e0b'; // Amber to distinguish from standard transit/driving
