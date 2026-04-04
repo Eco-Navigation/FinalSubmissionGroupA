@@ -436,6 +436,7 @@ export default function NavigationPage() {
         
         let hasCar = false;
         let hasTransit = false;
+        let hasWalk = false;
 
         itinerary.legs.forEach((leg: RouteLeg) => {
           const distKm = leg.distance / 1000;
@@ -447,6 +448,7 @@ export default function NavigationPage() {
           if (['BUS', 'RAIL', 'TRAM'].includes(leg.mode)) hasTransit = true;
           // Catch any variation of the car mode returned by the server
           if (leg.mode === 'CAR' || leg.mode === 'CAR_PARK' || leg.mode === 'CAR_TO_PARK') hasCar = true;
+          if (leg.mode === 'WALK') hasWalk = true;
           
           const legColor = MODE_COLORS[leg.mode] || '#6b7280'; // fallback to dark gray
           
@@ -492,7 +494,7 @@ export default function NavigationPage() {
         let title = 'Walking Route';
         let routeColor = '#10b981'; 
         
-        if (hasCar && hasTransit) {
+        if (hasCar && hasTransit || hasWalk) {
           mainIcon = Car; 
           title = 'Park & Ride'; 
           routeColor = '#f59e0b'; // Amber to distinguish from standard transit/driving
