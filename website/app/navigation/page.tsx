@@ -67,7 +67,7 @@ const CO2_FACTORS: Record<string, number> = {
 // Colors for the map lines based on the travel mode
 const MODE_COLORS: Record<string, string> = {
   'WALK': '#42db06',
-  'BICYCLE': '#07e29d',
+  'BICYCLE': '#11c149',
   'CAR': '#d74545',
   'BUS': '#d8db06',
   'RAIL': '#0c73da',
@@ -516,25 +516,38 @@ export default function NavigationPage() {
         let distString = `${totalDistKm.toFixed(1)} km`;
         let co2String = "";
         let co2Color = "";
-        if (perKmCO2 < 20) {
+        if (totalCO2g === 0) {
+          co2String = "0g CO₂ (Zero Emissions)";
+          co2Color = "text-white bg-gradient-to-r from-green-400 to-emerald-300 border border-emerald-400/50";
+        } else if (perKmCO2 < 60) {
           co2String = `${Math.round(totalCO2g)}g CO₂ (Very Low)`;
-          co2Color = "text-green-600 bg-green-50";
-        } else if (perKmCO2 < 80) {
+          co2Color = "text-green-600 bg-green-100 border border-green-200/50";
+        } else if (perKmCO2 < 100) {
           co2String = `${Math.round(totalCO2g)}g CO₂ (Low)`;
-          co2Color = "text-yellow-600 bg-yellow-50";
+          co2Color = "text-yellow-600 bg-yellow-50 border border-yellow-200/50";
         } else {
           co2String = `${Math.round(totalCO2g)}g CO₂ (High)`;
-          co2Color = "text-red-600 bg-red-50";
+          co2Color = "text-red-600 bg-red-50 border border-red-200/50";
         }
 
         return { title, durationMins, modes, totalDistKm, distString, totalCO2g, co2String, co2Color, routeColor, mainIcon, legsData, detailedLegs };
       });
+      
+      // Sort the final results by co2 emissions first and duration second (so the greenest route is always on top, and ties are broken by duration)
+      parsedRoutes.sort((a, b) => a.totalCO2g - b.totalCO2g || a.durationMins - b.durationMins);
 
-      // Sort the final results by duration so the fastest route appears at the top
-      parsedRoutes.sort((a, b) => a.durationMins - b.durationMins);
+      // Filter out any journeys with car plus transit or walk that exceed emissions of direct car routes
+      const finalRoutes = parsedRoutes.filter((route) => {
+        if (route.modes.includes('CAR') && (route.modes.includes('BUS') || route.modes.includes('TRAM') || route.modes.includes('RAIL') || route.modes.includes('WALK'))) {
+          const directCarRouteExists = parsedRoutes.find((r) => r.modes.includes('CAR') && !r.modes.includes('BUS') && !r.modes.includes('TRAM') && !r.modes.includes('RAIL') && !r.modes.includes('WALK'));
+          return directCarRouteExists ? route.totalCO2g <= directCarRouteExists.totalCO2g : true;
+        }
+        return true;
+      });
 
-      setRoutes(parsedRoutes);
-      if (parsedRoutes.length > 0) setActiveRouteIndex(0); // auto-select first
+
+      setRoutes(finalRoutes);
+      if (finalRoutes.length > 0) setActiveRouteIndex(0); // auto-select first
 
     } catch (err) {
       console.error("OTP Fetch Error:", err);
@@ -560,7 +573,7 @@ export default function NavigationPage() {
       <div ref={mapContainer} className="absolute inset-0 z-0 w-full h-full" />
 
       {/* UI Overlay */}
-      <div className="absolute top-0 left-0 h-full w-full md:w-96 p-4 z-10 pointer-events-none flex flex-col gap-4">
+      <div className="absolute top-0 left-0 h-full w-full md:w-fit p-4 z-10 pointer-events-none flex flex-col gap-4">
         
         {/* Search Panel */}
         <div className="bg-white/95 backdrop-blur-md shadow-lg rounded-xl p-5 pointer-events-auto shrink-0 border border-gray-200">
@@ -637,7 +650,7 @@ export default function NavigationPage() {
             <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
               <div className="flex gap-2">
                 <select 
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm flex-1 bg-white focus:ring-2 focus:ring-green-500 outline-none text-gray-700"
+                  className="pl-2 pr-1 py-1 border border-gray-300 rounded-lg text-sm flex-[0.5] bg-white focus:ring-2 focus:ring-green-500 outline-none text-gray-700"
                   value={arriveBy ? 'arrive' : 'depart'}
                   onChange={(e) => setArriveBy(e.target.value === 'arrive')}
                 >
@@ -648,17 +661,17 @@ export default function NavigationPage() {
                   type="time" 
                   value={time} 
                   onChange={e => setTime(e.target.value)}
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm flex-1 bg-white focus:ring-2 focus:ring-green-500 outline-none text-gray-700"
+                  className="pl-2 pr-2 py-1 border border-gray-300 rounded-lg text-sm flex-[0.5] bg-white focus:ring-2 focus:ring-green-500 outline-none text-gray-700 text-right [&::-webkit-calendar-picker-indicator]:ml-[-2]"
                 />
                 <input 
                   type="date" 
                   value={date} 
                   onChange={e => setDate(e.target.value)}
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm flex-1 bg-white focus:ring-2 focus:ring-green-500 outline-none text-gray-700"
+                  className="pl-2 pr-2 py-1 border border-gray-300 rounded-lg text-sm flex-[1] bg-white focus:ring-2 focus:ring-green-500 outline-none text-gray-700 text-right [&::-webkit-calendar-picker-indicator]:ml-[-10]"
                 />
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex gap-2">
                 {[
                   { id: 'WALK', label: 'Walk', icon: Footprints },
                   { id: 'TRANSIT', label: 'Transit', icon: Bus },
@@ -692,7 +705,7 @@ export default function NavigationPage() {
 
         {/* Results Panel */}
         {showResultsPanel && (
-          <div className="bg-white/95 backdrop-blur-md shadow-lg rounded-xl pointer-events-auto flex flex-col overflow-hidden border border-gray-200 h-full max-h-[calc(100vh-26rem)]">
+          <div className="bg-white/95 backdrop-blur-md shadow-lg rounded-xl pointer-events-auto flex flex-col overflow-hidden border border-gray-200 h-full max-h-[calc(100vh-30rem)]">
             <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center shrink-0">
               <h2 className="font-bold text-gray-800">Available Routes</h2>
               <button onClick={closeResults} className="text-gray-500 hover:text-gray-700 transition-colors">
