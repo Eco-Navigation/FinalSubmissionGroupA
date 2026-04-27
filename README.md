@@ -1,3 +1,5 @@
+[![Watch the demo](https://img.youtube.com/vi/m8ja9X3AeVw/0.jpg)](https://www.youtube.com/watch?v=m8ja9X3AeVw)
+
 # Take The Green Way
 
 This repository showcases our project development journey, including technical implementation, business strategy and product design.
