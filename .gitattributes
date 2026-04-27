@@ -1,0 +1,2 @@
+TheGreenWay-iOS-main filter=lfs diff=lfs merge=lfs -text
+TheGreenWay-iOS-main/** filter=lfs diff=lfs merge=lfs -text
