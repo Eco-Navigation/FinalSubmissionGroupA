@@ -1,6 +1,6 @@
-# Group A – Entrepreneurship Coursework
+# Take The Green Way
 
-Welcome to Group A’s Entrepreneurship coursework submission. This repository showcases our project development journey, including technical implementation, business strategy and product design.
+This repository showcases our project development journey, including technical implementation, business strategy and product design.
 
 ---
 
